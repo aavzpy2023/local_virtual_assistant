@@ -1,0 +1,146 @@
+services:
+  # Frontend - Interfaz de usuario del chatbot
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "8501:8501"
+    networks:
+      - chatbot_network
+    volumes:
+      - ./frontend:/app
+    restart: unless-stopped
+
+  # Backend - Generador de embeddings con Nomic Server
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "5000:5000"
+    networks:
+      - chatbot_network
+    volumes:
+      - backend_data:/app
+    depends_on:
+      - milvus
+      - postgres
+    restart: unless-stopped
+
+  # n8n - Orquestador de flujos
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    networks:
+      - chatbot_network
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n_user
+      - DB_POSTGRESDB_PASSWORD=n8n_password
+    depends_on:
+      - postgres
+    volumes:
+      - n8n_data:/root/.n8n
+    restart: unless-stopped
+
+  # PostgreSQL - Base de datos para n8n (y posiblemente otros servicios)
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    environment:
+      POSTGRES_USER: n8n_user
+      POSTGRES_PASSWORD: n8n_password
+      POSTGRES_DB: n8n
+    ports:
+      - "5432:5432"
+    networks:
+      - chatbot_network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Ollama - Modelo de lenguaje avanzado
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    networks:
+      - chatbot_network
+    expose:
+      - "11434"
+    ports:
+      - "11434:11434"  # Permitir acceso externo
+    volumes:
+      - ~/.ollama:/root/.ollama
+    restart: unless-stopped
+
+  # Milvus - Base de datos vectorial
+
+
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.3.3
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+      - "minio"
+
+
+networks:
+  chatbot_network:
+    driver: bridge
+
+volumes:
+  backend_data:
+    driver: local
+  n8n_data:
+    driver: local
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+  milvus_data:
+    driver: local
+  minio_data:
+    driver: local
