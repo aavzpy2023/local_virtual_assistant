@@ -1,20 +1,19 @@
-# Usa una imagen ligera de Python como base
 FROM python:3.9-slim
 
-# Establece el directorio de trabajo dentro del contenedor
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copia las dependencias del backend
-COPY requirements.txt requirements.txt
-
-# Instala las dependencias
+# Copy requirements first for better caching
+COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Copia el código del backend al contenedor
+# Copy the rest of the application
 COPY . .
 
-# Expone el puerto en el que correrá el servicio
-EXPOSE 5000
-
-# Comando para ejecutar el servicio de FastAPI
+# Command to run the application
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
