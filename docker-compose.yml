@@ -20,7 +20,7 @@ services:
     networks:
       - chatbot_network
     volumes:
-      - backend_data:/app
+      - ./backend:/app
     depends_on:
       - milvus
       - postgres
@@ -132,7 +132,7 @@ networks:
     driver: bridge
 
 volumes:
-  backend_data:
+  backend:
     driver: local
   n8n_data:
     driver: local
