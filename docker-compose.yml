@@ -23,6 +23,7 @@ services:
       - ./backend:/app
     depends_on:
       - milvus
+      - nomic
       - postgres
     restart: unless-stopped
 
@@ -53,7 +54,7 @@ services:
   # PostgreSQL - Base de datos para n8n (y posiblemente otros servicios)
   postgres:
     image: postgres:14
-    container_name: postgres
+    container_name: postgres_chatbot
     environment:
       POSTGRES_USER: n8n_user
       POSTGRES_PASSWORD: n8n_password
@@ -126,6 +127,19 @@ services:
       - "etcd"
       - "minio"
 
+    # Nomic Embed Server
+  nomic:
+    build: ./nomic  # Crea el servicio desde la carpeta "nomic"
+    container_name: nomic
+    ports:
+      - "8000:8000"  # Cambia el puerto si es necesario
+    networks:
+      - chatbot_network
+    volumes:
+      - ./nomic_data:/root/.nomic  # Sincroniza la carpeta local con el contenedor
+    environment:
+      - MODE=local  # Ejecutar en modo local
+    restart:  unless-stopped
 
 networks:
   chatbot_network:
@@ -143,4 +157,6 @@ volumes:
   milvus_data:
     driver: local
   minio_data:
+    driver: local
+  nomic_data:
     driver: local

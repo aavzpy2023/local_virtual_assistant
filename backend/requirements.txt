@@ -8,5 +8,6 @@ nomic[local]==3.4.1
 ollama==0.4.7
 psycopg2-binary==2.9.10
 pymilvus==2.5.6
+pymilvus[model]
 pydantic==2.9.0
 uvicorn==0.27.1

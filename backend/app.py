@@ -2,15 +2,8 @@ import json
 
 import requests
 from fastapi import FastAPI
+from models import GenerateRequest
 from pydantic import BaseModel
-
-
-# Define a data model using Pydantic for the request body
-class GenerateRequest(BaseModel):
-    model: str  # Name of the model to be used
-    prompt: str  # Prompt to be sent to the model
-    stream: bool = False  # Flag to enable streaming of responses
-
 
 app = FastAPI()
 
@@ -21,9 +14,11 @@ def read_root():
 
 
 @app.post("/get_answer/")
+# async def generate_formatted(request: GenerateRequest):
 async def generate_formatted(model: str, prompt: str, stream: bool = False):
     url = "http://ollama:11434/api/generate"
     headers = {"Content-Type": "application/json"}
+    # data = {"model": request.model, "prompt": request.prompt, "stream": request.stream}
     data = {"model": model, "prompt": prompt, "stream": stream}
 
     response = requests.post(url, headers=headers, data=json.dumps(data), stream=True)
