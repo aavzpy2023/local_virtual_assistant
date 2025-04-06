@@ -136,7 +136,7 @@ services:
     networks:
       - chatbot_network
     volumes:
-      - ./nomic_data:/root/.nomic  # Sincroniza la carpeta local con el contenedor
+      - ./nomic:/app  # Sincroniza la carpeta local con el contenedor
     environment:
       - MODE=local  # Ejecutar en modo local
     restart:  unless-stopped
