@@ -25,7 +25,10 @@ services:
       - milvus
       - nomic
       - postgres
+    environment:
+      - PYTHONPATH=/app
     restart: unless-stopped
+
 
   # n8n - Orquestador de flujos
   n8n:

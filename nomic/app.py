@@ -9,7 +9,7 @@ app = FastAPI()
 
 
 @app.post(
-    "/generate",
+    "/api/generate",
     summary="Generar embeddings",
     description="Genera embeddings para una lista de textos.",
 )
