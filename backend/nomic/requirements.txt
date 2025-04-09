@@ -2,4 +2,5 @@ fastapi[standard]==0.113.0
 nomic[local]==3.4.1
 pydantic==2.9.0
 uvicorn==0.27.1
-
+sentence-transformers
+einops

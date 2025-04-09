@@ -1,12 +1,18 @@
 import json
-from typing import List
+import os
+from typing import Dict, List
 
 # import sys
 # import milvus.milvus
 # sys.path.append("/app")
 import requests
-from fastapi import FastAPI  # type: ignore
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException  # type: ignore
+
+# from milvus.milvus import milvus_router
 from pymilvus import MilvusClient  # type: ignore
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -16,23 +22,32 @@ client = MilvusClient("Versat.db")
 
 
 @app.get("/mv_insert")
-async def insert(collection: str, data: dict):
+async def insert(
+    collection: str,
+    data: List[dict] = [
+        {"vector": [], "text": "", "subject": ""},
+        {"vector": [], "text": "", "subject": ""},
+    ],
+):
     if not client.has_collection(collection_name=collection):
         client.create_collection(
             collection_name=collection,
             dimension=768,  # The vectors we will use in this demo has 768 dimensions
         )
+
         res = client.insert(collection_name=collection, data=data)
     return res
 
 
 @app.post("/get_answer/")
 # async def generate_formatted(request: GenerateRequest):
-async def generate_formatted(model: str, prompt: str, stream: bool = False):
+async def generate_formatted(
+    model: str, prompt: str, stream: bool = False, ollama_port: int = 11434
+):
     """
     Get answer from ollama
     """
-    url = "http://ollama:11434/api/generate"
+    url = f"http://ollama_llm:{ollama_port}/api/generate"
     headers = {"Content-Type": "application/json"}
     # data = {"model": request.model, "prompt": request.prompt, "stream": request.stream}
     data = {"model": model, "prompt": prompt, "stream": stream}
@@ -63,13 +78,90 @@ async def generate_formatted(model: str, prompt: str, stream: bool = False):
 @app.post("/get_embeddings")
 async def get_embeddings(text: str, overlap: int, answer_split_chr: str = "\n"):
     chunks = text.split(answer_split_chr)
-    url = "http://nomic:8000/api/generate"
+    url = "http://ollama_llm:11434/api/generate"
     headers = {"Content-Type": "application/json"}
     payload = {"text_to_embed": chunks}
     embeddings = requests.get(url, headers=headers, json=payload)
     return embeddings.json()
 
 
-@app.get("/hola")
-async def hola():
-    return {"elia": "hola"}
+@app.post("/generate-embeddings/")
+async def generate_embeddings(data: dict):
+    """
+    Genera embeddings para una lista de textos.
+    """
+    url_embed = os.getenv("URL_FOR_EMBED", "ollama_llm")
+    port_embed = os.getenv("PORT_FOR_EMBED", 11434)
+
+    OLLAMA_URL = f"http://{url_embed}:{port_embed}/api/embed"
+    print("OLLAMA_URL", OLLAMA_URL)
+    try:
+        # Extraer la lista de textos del cuerpo de la solicitud
+        input_texts = data.get("texts", [])
+        if not isinstance(input_texts, list) or not all(
+            isinstance(text, str) for text in input_texts
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="El campo 'texts' debe ser una lista de cadenas.",
+            )
+
+        # Generar embeddings para cada texto
+        embeddings = []
+        for text in input_texts:
+            payload = {"model": "nomic-embed-text:latest", "input": text}
+
+            # Enviar la solicitud a Ollama
+            response = requests.post(OLLAMA_URL, json=payload)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code, detail=response.text
+                )
+
+            # Agregar el embedding generado a la lista
+            embeddings.append(response.json()["embeddings"])
+
+        # Devolver los embeddings generados
+        return {"embeddings": embeddings}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/generate-predefined-embeddings")
+async def generate_predefined_embeddings():
+    """
+    Genera embeddings para una lista predefinida de textos.
+    """
+    try:
+        # Lista predefinida de textos
+        predefined_texts = ["asdasd ", "asd asd asdasdf "]
+
+        # URL del endpoint /generate-embeddings/
+        url = "http://backend:5000/generate-embeddings/"  # Usar el nombre del servicio Docker
+
+        # Payload con la lista de textos
+        payload = {"texts": predefined_texts}
+
+        # Encabezados para indicar que el contenido es JSON
+        headers = {"Content-Type": "application/json"}
+
+        # Enviar la solicitud POST al endpoint /generate-embeddings/ con un timeout
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+
+        # Verificar si la solicitud fue exitosa
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        # Procesar la respuesta
+        embeddings = response.json().get("embeddings", [])
+
+        # Devolver los embeddings generados
+        return {"embeddings": embeddings}
+
+    except requests.exceptions.Timeout:
+        raise HTTPException(
+            status_code=504, detail="Tiempo de espera excedido al generar embeddings."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

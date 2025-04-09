@@ -23,7 +23,7 @@ services:
       - ./backend:/app
     depends_on:
       - milvus
-      - nomic
+      # - nomic
       - postgres
     environment:
       - PYTHONPATH=/app
@@ -71,19 +71,34 @@ services:
     restart: unless-stopped
 
   # Ollama - Modelo de lenguaje avanzado
-  ollama:
+  ollama_llm:
     image: ollama/ollama
-    container_name: ollama
+    container_name: ollama_llm
     networks:
       - chatbot_network
-    expose:
-      - "11434"
     ports:
-      - "11434:11434"  # Permitir acceso externo
+      - "11434:11434"  # Puerto dedicado para el modelo LLM
     volumes:
-      - ~/.ollama:/root/.ollama
+      - ~/.ollama:/root/.ollama  # Almacenamiento dedicado para el modelo LLM
+    environment:
+      - OLLAMA_HOST=http://0.0.0.0:11434
+      - OLLAMA_MODELS=/root/.ollama/models
     restart: unless-stopped
 
+  # Servicio Ollama Embedding (Modelo nomic-embed-text)
+  # ollama_embed:
+  #   image: ollama/ollama
+  #   container_name: ollama_embed
+  #   networks:
+  #     - chatbot_network
+  #   ports:
+  #     - "11435:11435"  # Puerto dedicado para el modelo de embeddings
+  #   volumes:
+  #     - ~/.ollama:/root/.ollama  # Almacenamiento dedicado para el modelo de embeddings
+  #   environment:
+  #     - OLLAMA_HOST=http://0.0.0.0:11435
+  #     - OLLAMA_MODELS=/root/.ollama/models
+  #   restart: unless-stopped
   # Milvus - Base de datos vectorial
 
 
@@ -131,18 +146,19 @@ services:
       - "minio"
 
     # Nomic Embed Server
-  nomic:
-    build: ./nomic  # Crea el servicio desde la carpeta "nomic"
-    container_name: nomic
-    ports:
-      - "8000:8000"  # Cambia el puerto si es necesario
-    networks:
-      - chatbot_network
-    volumes:
-      - ./nomic:/app  # Sincroniza la carpeta local con el contenedor
-    environment:
-      - MODE=local  # Ejecutar en modo local
-    restart:  unless-stopped
+  # nomic:
+  #   build: ./nomic  # Crea el servicio desde la carpeta "nomic"
+  #   container_name: nomic
+  #   ports:
+  #     - "8000:8000"  # Cambia el puerto si es necesario
+  #   networks:
+  #     - chatbot_network
+  #   volumes:
+  #     - ./nomic:/app  # Sincroniza la carpeta local con el contenedor
+  #     - nomic_cache:/root/.cache
+  #   environment:
+  #     - MODE=local  # Ejecutar en modo local
+  #   restart:  unless-stopped
 
 networks:
   chatbot_network:
@@ -161,5 +177,5 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  nomic_data:
-    driver: local
+  # nomic_cache:
+  #   driver: local
