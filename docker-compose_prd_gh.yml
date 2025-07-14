@@ -1,0 +1,207 @@
+services:
+  # Frontend - Interfaz de usuario del chatbot
+  frontend:
+    build: ./frontend
+    # image: frontend:latest
+    # container_name: frontend
+    ports:
+      - "8501:8501"
+    networks:
+      - chatbot_network
+    volumes:
+      - ./frontend:/app
+    restart: unless-stopped
+
+  # Backend - Generador de embeddings con Nomic Server
+  backend:
+    build: ./backend
+    # container_name: backend
+    # image: backend:latest
+    ports:
+      - "5000:5000"
+    networks:
+      - chatbot_network
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - milvus
+      # - nomic
+      - postgres
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+
+  # n8n - Orquestador de flujos
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5680:5678"
+    networks:
+      - chatbot_network
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n_user
+      - DB_POSTGRESDB_PASSWORD=n8n_password
+    depends_on:
+      - postgres
+    volumes:
+      - n8n_data:/root/.n8n
+    restart: unless-stopped
+
+  # PostgreSQL - Base de datos para n8n (y posiblemente otros servicios)
+  postgres:
+    image: postgres:latest
+    # container_name: postgres_chatbot
+    environment:
+      POSTGRES_USER: n8n_user
+      POSTGRES_PASSWORD: n8n_password
+      POSTGRES_DB: n8n
+    ports:
+      - "5432:5432"
+    networks:
+      - chatbot_network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Ollama - Modelo de lenguaje avanzado
+  ollama_llm:
+    image: ollama/ollama:latest
+    # container_name: ollama_llm
+    networks:
+      - chatbot_network
+    ports:
+      - "11434:11434" # Puerto dedicado para el modelo LLM
+    volumes:
+      - ~/.ollama:/~/.ollama # Almacenamiento dedicado para el modelo LLM
+    environment:
+      - OLLAMA_HOST=http://0.0.0.0:11434
+      - OLLAMA_MODELS=~/.ollama/models
+      - OLLAMA_MAX_CONCURRENT_QUERIES=100
+    restart: unless-stopped
+
+  # Servicio Ollama Embedding (Modelo nomic-embed-text)
+  # ollama_embed:
+  #   image: ollama/ollama
+  #   container_name: ollama_embed
+  #   networks:
+  #     - chatbot_network
+  #   ports:
+  #     - "11435:11435"  # Puerto dedicado para el modelo de embeddings
+  #   volumes:
+  #     - ~/.ollama:/root/.ollama  # Almacenamiento dedicado para el modelo de embeddings
+  #   environment:
+  #     - OLLAMA_HOST=http://0.0.0.0:11435
+  #     - OLLAMA_MODELS=/root/.ollama/models
+  #   restart: unless-stopped
+  # Milvus - Base de datos vectorial
+
+  etcd:
+    container_name: etcd
+    image: bitnami/etcd:latest
+    networks:
+      - chatbot_network
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_LOG_LEVEL=info
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    healthcheck:
+      test:
+        ["CMD", "etcdctl", "--endpoints=http://etcd:2379", "endpoint", "health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    networks:
+      - chatbot_network
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  milvus:
+    # container_name: milvus-standalone
+    image: milvusdb/milvus:latest
+    command: ["milvus", "run", "standalone"]
+    networks:
+      - chatbot_network
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      # etcd:
+      #   condition: service_healthy
+      # minio:
+      #   condition: service_healthy
+      - "minio"
+      - "etcd"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+    # Nomic Embed Server
+  # nomic:
+  #   build: ./nomic  # Crea el servicio desde la carpeta "nomic"
+  #   container_name: nomic
+  #   ports:
+  #     - "8000:8000"  # Cambia el puerto si es necesario
+  #   networks:
+  #     - chatbot_network
+  #   volumes:
+  #     - ./nomic:/app  # Sincroniza la carpeta local con el contenedor
+  #     - nomic_cache:/root/.cache
+  #   environment:
+  #     - MODE=local  # Ejecutar en modo local
+  #   restart:  unless-stopped
+
+networks:
+  chatbot_network:
+    driver: bridge
+
+volumes:
+  backend:
+    driver: local
+  n8n_data:
+    driver: local
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+  milvus_data:
+    driver: local
+  minio_data:
+    driver: local
+  # nomic_cache:
+  #   driver: local
