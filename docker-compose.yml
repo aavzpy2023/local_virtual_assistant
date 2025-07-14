@@ -15,8 +15,8 @@ services:
 
   # Frontend - Interfaz de usuario del chatbot
   frontend:
-    # build: ./frontend
-    image: frontend:latest
+    build: ./frontend
+    # image: frontend:latest
     container_name: frontend
     ports:
       - "8501:8501"
@@ -28,8 +28,8 @@ services:
 
   # Backend - Generador de embeddings con Nomic Server
   backend:
-    # build: ./backend
-    container_name: backend
+    build: ./backend
+    # container_name: backend
     image: backend:latest
     ports:
       - "5000:5000"
